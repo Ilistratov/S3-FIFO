@@ -1,2 +1,4 @@
 .cache
 dataset.txt
+s3-fifo
+.vscode

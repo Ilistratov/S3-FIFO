@@ -47,6 +47,7 @@ public:
       loc = unused_loc_.Pop();
     }
     stored_items_[key] = loc;
+    eviction_queue_.Push(key);
     return loc;
   }
 

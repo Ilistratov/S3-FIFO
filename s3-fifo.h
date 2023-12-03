@@ -28,18 +28,14 @@ private:
       loc = GetLoc(key);
       assert(loc < SizeS + SizeM);
     }
-    if (loc < SizeS + SizeM) {
-      if (freq_[loc] < 3) {
-        ++freq_[loc];
-      }
-      return data_[loc];
+    if (freq_[loc] < 3) {
+      ++freq_[loc];
     }
-    Insert(key, underlying_storage_.Read(key));
-    return Get(key);
+    return data_[loc];
   }
 
   void Insert(const K &key, V value) {
-    while (fifo_small_.IsFull() && fifo_main_.IsFull()) {
+    while (fifo_small_.IsFull() || fifo_main_.IsFull()) {
       Evict();
     }
     if (fifo_ghost_.Contains(key)) {
@@ -88,7 +84,7 @@ private:
         freq_[loc + SizeS] -= 1;
       } else {
         underlying_storage_.Write(eviction_candidate, data_[loc + SizeS]);
-        fifo_small_.MarkFreeLoc(loc);
+        fifo_main_.MarkFreeLoc(loc);
         break;
       }
     }

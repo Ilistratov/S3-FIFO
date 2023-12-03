@@ -1,4 +1,4 @@
-# Single-threaded c++ implementatino of S3FIFO from https://github.com/Thesys-lab/sosp23-s3fifo
+# Single-threaded C++ implementatino of S3FIFO from [FIFO Queues are All You Need for Cache Eviction](https://dl.acm.org/doi/pdf/10.1145/3600006.3613147)
 
 ## How to run
 

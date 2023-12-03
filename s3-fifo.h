@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fifo_cache.h"
+#include "fifo.h"
 
 template <typename K, typename V, int SizeS, int SizeM,
           typename UnderlyingStorage>

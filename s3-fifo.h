@@ -1,32 +1,34 @@
 #pragma once
 
-#include "fifo.h"
+#include <cassert>
+#include <cstdint>
+#include <unordered_map>
+#include <unordered_set>
+
+#include "ring_buffer.h"
 
 template <typename K, typename V, int SizeS, int SizeM,
           typename UnderlyingStorage>
 class S3FIFO {
 public:
-  S3FIFO(UnderlyingStorage &storage) : underlying_storage_(storage) {}
+  S3FIFO(UnderlyingStorage &storage) : underlying_storage_(storage) {
+    for (uint32_t i = 0; i < SizeS + SizeM; i++) {
+      free_loc_.Push(i);
+    }
+  }
   void Write(const K &key, V value) { Get(key) = value; }
   V Read(const K &key) { return Get(key); }
 
 private:
-  uint32_t GetLoc(const K &key) const {
-    uint32_t loc = SizeS + SizeM;
-    if (fifo_small_.Contains(key)) {
-      loc = fifo_small_.GetLocation(key);
-    } else if (fifo_main_.Contains(key)) {
-      loc = SizeS + fifo_main_.GetLocation(key);
-    }
-    return loc;
-  }
-
   V &Get(const K &key) {
-    uint32_t loc = GetLoc(key);
-    if (loc >= SizeS + SizeM) {
+    auto it = key_to_loc_.find(key);
+    uint32_t loc = 0;
+    if (it == key_to_loc_.end()) {
       Insert(key, underlying_storage_.Read(key));
-      loc = GetLoc(key);
+      loc = key_to_loc_.at(key);
       assert(loc < SizeS + SizeM);
+    } else {
+      loc = it->second;
     }
     if (freq_[loc] < 3) {
       ++freq_[loc];
@@ -35,66 +37,90 @@ private:
   }
 
   void Insert(const K &key, V value) {
-    while (fifo_small_.IsFull() || fifo_main_.IsFull()) {
-      Evict();
-    }
-    if (fifo_ghost_.Contains(key)) {
-      fifo_main_.Insert(key);
+    uint32_t loc = SizeS + SizeM;
+    if (ghost_contents_.find(key) != ghost_contents_.end()) {
+      loc = InsertToMain(key);
     } else {
-      fifo_small_.Insert(key);
+      loc = InsertToSmall(key);
     }
-    uint32_t loc = GetLoc(key);
     freq_[loc] = 0;
+    key_to_loc_[key] = loc;
     data_[loc] = value;
   }
 
-  void Evict() {
-    if (fifo_small_.IsFull()) {
-      EvictS();
-    } else {
-      EvictM();
+  uint32_t InsertToSmall(const K &key) {
+    while (small_.IsFull()) {
+      EvictSmall();
     }
+    uint32_t loc = free_loc_.Pop();
+    small_.Push(key);
+    return loc;
   }
 
-  void EvictS() {
-    while (fifo_small_.Size() > 0) {
-      K eviction_candidate;
-      uint32_t loc = fifo_small_.Evict(eviction_candidate);
-      if (freq_[loc] <= 1) {
-        if (fifo_ghost_.IsFull()) {
-          K unused;
-          fifo_ghost_.Evict(unused);
-        }
-        fifo_ghost_.Insert(eviction_candidate);
-        underlying_storage_.Write(eviction_candidate, data_[loc]);
-        break;
-      }
-      if (fifo_main_.IsFull()) {
-        EvictM();
-      }
+  uint32_t InsertToMain(const K &key) {
+    while (main_.IsFull()) {
+      EvictMain();
     }
+    uint32_t loc = free_loc_.Pop();
+    main_.Push(key);
+    return loc;
   }
 
-  void EvictM() {
-    while (fifo_main_.Size() > 0) {
-      K eviction_candidate;
-      uint32_t loc = fifo_main_.Evict(eviction_candidate, true);
-      if (freq_[loc + SizeS] > 0) {
-        fifo_main_.Insert(eviction_candidate, loc);
-        freq_[loc + SizeS] -= 1;
-      } else {
-        underlying_storage_.Write(eviction_candidate, data_[loc + SizeS]);
-        fifo_main_.MarkFreeLoc(loc);
+  void InsertToGhost(K key) {
+    if (ghost_.IsFull()) {
+      ghost_.Pop();
+    }
+    ghost_.Push(key);
+  }
+
+  void EvictToUnderlyingStorage(K key, uint32_t loc) {
+    underlying_storage_.Write(key, data_[loc]);
+    free_loc_.Push(loc);
+    key_to_loc_.erase(key);
+  }
+
+  void EvictSmall() {
+    K eviction_candidate = small_.Pop();
+    uint32_t loc = key_to_loc_.at(eviction_candidate);
+    /* In Algo 1. <=1
+     * In Fig. 5 == 0
+     *
+     * With <= 1 hit-ratio 0.82
+     * With == 0 hit-ratio 0.78
+     */
+    if (freq_[loc] <= 1) {
+      EvictToUnderlyingStorage(eviction_candidate, loc);
+      InsertToGhost(eviction_candidate);
+      return;
+    }
+    if (main_.IsFull()) {
+      EvictMain();
+    }
+    /* are we supposed to decrement freq??? */
+    main_.Push(eviction_candidate);
+  }
+
+  void EvictMain() {
+    while (main_.Size() > 0) {
+      K eviction_candidate = main_.Pop();
+      uint32_t loc = key_to_loc_.at(eviction_candidate);
+      if (freq_[loc] == 0) {
+        EvictToUnderlyingStorage(eviction_candidate, loc);
         break;
       }
+      freq_[loc] -= 1;
+      main_.Push(eviction_candidate);
     }
   }
 
 private:
-  Fifo<K, SizeS> fifo_small_;
-  Fifo<K, SizeM> fifo_main_;
-  Fifo<K, SizeM> fifo_ghost_;
-  uint8_t freq_[SizeS + SizeM];
+  RingBuffer<K, SizeS> small_;
+  RingBuffer<K, SizeM> main_;
+  RingBuffer<K, SizeM> ghost_;
+  RingBuffer<uint32_t, SizeS + SizeM> free_loc_; /* could be reduced in size */
+  std::unordered_map<K, uint32_t> key_to_loc_;
+  std::unordered_set<K> ghost_contents_;
   V data_[SizeS + SizeM];
+  uint8_t freq_[SizeS + SizeM]; /* could be reduced in size */
   UnderlyingStorage &underlying_storage_;
 };

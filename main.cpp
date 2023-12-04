@@ -1,4 +1,5 @@
 #include "s3-fifo.h"
+#include <cstdint>
 #include <iostream>
 #include <stdint.h>
 #include <unordered_map>
@@ -40,4 +41,12 @@ int main() {
   }
   double hit_ratio = 1.0 - double(gMainStorage.n_reads_) / ops;
   std::cout << "Hit ratio: " << hit_ratio << '\n';
+  /*
+    (kSizeM + kSizeS) * sizeof(uint64_t);
+    sizeof(cache);
+    sizeof(cache.small_);
+    sizeof(cache.main_);
+    sizeof(cache.ghost_);
+    sizeof(cache.value_);
+  */
 }

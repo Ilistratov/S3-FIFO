@@ -16,6 +16,7 @@ public:
   }
 
   uint32_t Size() const { return tail_ - head_; };
+  uint32_t IsFull() const { return Size() == Capacity; }
 
 private:
   T data_[Capacity];

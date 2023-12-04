@@ -16,7 +16,7 @@ $(DATASET):
 	python3 gen_requests.py --output_file=$(DATASET)
 
 run: build $(DATASET)
-	./$(PROG) < $(DATASET)
+	time -p ./$(PROG) < $(DATASET)
 
 clean:
 	rm $(PROG)

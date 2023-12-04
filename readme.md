@@ -1,4 +1,4 @@
-# Single-threaded C++ implementatino of S3FIFO from [FIFO Queues are All You Need for Cache Eviction](https://dl.acm.org/doi/pdf/10.1145/3600006.3613147)
+# Single-threaded C++ implementation of S3FIFO from [FIFO Queues are All You Need for Cache Eviction](https://dl.acm.org/doi/pdf/10.1145/3600006.3613147)
 
 ## How to run
 
